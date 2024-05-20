@@ -14,9 +14,14 @@ struct Threadpool {
     sender: mpsc::Sender<Job> // 一个sender
 }
 
+/// 将 thread::JoinHandle<()> 包装在 Option 中有以下几个设计上的优点：
+///   延迟初始化：允许在稍后阶段初始化线程。
+///   线程的可终止性：安全地表示线程已经终止或尚未启动。
+///   表示线程的生命周期：明确线程的运行状态。
+///   简化线程管理：方便在销毁线程池时终止和回收线程。
 struct Worker {
     id: usize,
-    thread: thread::JoinHandle<()>
+    thread: Option<thread::JoinHandle<()>>
 }
 
 impl Threadpool {
@@ -32,6 +37,14 @@ impl Threadpool {
 
         Threadpool { workers, sender }
     }
+
+    fn execute<F>(&self, f: F)
+    where 
+        F: FnOnce() + Send + 'static // 因为不知道什么时候这个job会被执行 所以 这里使用了静态生命周期
+    {
+        let job = Box::new(f);
+        self.sender.send(job).unwrap();
+    }
 }
 
 impl Worker {
@@ -40,10 +53,10 @@ impl Worker {
             // 从channel中拉取job执行
             let job = receiver.lock().unwrap().recv().unwrap();
             println!("Worker {} got a job; executing.", id);
-            job();
+            job(); // 这里的job是一个闭包 这里调用这个闭包
         });
 
-        Worker { id, thread }
+        Worker { id, thread: Some(thread) }
     }
 }
 

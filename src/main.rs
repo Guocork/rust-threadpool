@@ -9,6 +9,7 @@ use std::{
 
 type Job = Box<dyn FnOnce() + Send>;
 
+
 struct Threadpool {
     workers: Vec<Worker>,  // 多个工作线程集合
     sender: mpsc::Sender<Job> // 一个sender
@@ -44,6 +45,17 @@ impl Threadpool {
     {
         let job = Box::new(f);
         self.sender.send(job).unwrap();
+    }
+}
+
+impl Drop for Threadpool {
+    fn drop(&mut self) {
+
+        for worker in &mut self.workers {
+            if let Some(thread) = worker.thread.take() {
+                thread.join().unwrap();
+            }
+        }
     }
 }
 
